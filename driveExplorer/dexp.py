@@ -17,6 +17,10 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 def cli():
     pass
   
+if not os.path.exists("credentials.json"):
+  with open("credentials.json", "w") as creds:
+    creds.write('{"installed":{"client_id":"608244956902-uap2nm4p29akebhp8qevlmu6fbm969a3.apps.googleusercontent.com","project_id":"psyched-choir-448608-n5","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"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","redirect_uris":["http://localhost"]}}')
+
   
   
 def signup():
@@ -76,7 +80,7 @@ def setup(folder):
         os.mkdir(os.path.abspath(folder).replace("\\", "/") + "/dexp")
         secho(f"dexp folder created in {data["dir"]}!", fg="green")
       else:
-        return secho("dexp folder already exists in the destination folder!", fg="red")
+        secho("dexp folder found, setting it as folder...", fg="yellow")
         
     return secho("Setup complete!", fg="green")
 
@@ -86,16 +90,30 @@ def setup(folder):
 @cli.command("save", help="Save the dexp folder to Drive")
 def save():
   creds = signup()
-  with open("data.json", "r") as datafile:
+  if not os.path.exists("data.json"):
+    return secho("Please run <dexp setup> to set up the folder first", fg="red")
+  with open("data.json", "r+") as datafile:
     data = json.load(datafile)
     path = data["dir"]
     folderid = data["id"]
     
-  if not os.path.exists("data.json"):
-    return secho("Please run <dexp setup> to set up the folder first", fg="red")
   
   try:
-    print("saving...")
+    secho("saving...")
+    service = build("drive", "v3", credentials=creds)
+    for i in os.listdir(path + "/dexp"):
+      results = service.files().list(pageSize=1,fields="files(id)",q="'" + folderid + "' in parents and trashed=false and name='" + i + "'").execute()
+      files = results.get("files", [])
+      media = MediaFileUpload(path + "/dexp/" + i, mimetype="file/csv")
+      if files != []:
+          print(files)
+          file_metadata = {}
+          file = service.files().update(fileId=files[0]["id"], body=file_metadata, media_body=media, fields="id").execute()
+      else:
+          file_metadata = {"name": i, "parents": [folderid]}
+          file = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        
+    secho("Saved successfully!", fg="green")
   
   except HttpError as error:
     secho(f"An error occurred: {error}")
