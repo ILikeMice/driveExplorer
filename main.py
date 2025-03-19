@@ -9,10 +9,10 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/drive.file"]
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
-def main():
+def setup():
   """Shows basic usage of the Drive v3 API.
   Prints the names and ids of the first 10 files the user has access to.
   """
@@ -36,25 +36,35 @@ def main():
       token.write(creds.to_json())
 
   try:
-    if not os.path.exists("data.json"):
-      service = build("drive", "v3", credentials=creds)
-      results = service.files().list(q= "mimeType = 'application/vnd.google-apps.folder' and name = 'dexp'").execute()
-      item = results.get("files", [])
-      print(item)
-      print("check")
+    service = build("drive", "v3", credentials=creds)
+    results = service.files().list(q= "mimeType = 'application/vnd.google-apps.folder' and name = 'dexp' and trashed = False", fields="files(id,name,trashed)").execute()
+    items = results.get("files", [])
+
+    print(items)
+
+    if len(items) > 1:
+      return print("More than one folder with the name 'dexp', please delete/rename them.")
+
+    if len(items) == 0:
       file_metadata = {
           "name": "dexp",
           "mimeType": "application/vnd.google-apps.folder",
       }
-
-      # pylint: disable=maybe-no-member
+    
       file = service.files().create(body=file_metadata, fields="id").execute()
       print(f'Folder ID: "{file.get("id")}".')
       with open("data.json", "w") as datafile:
-        datafile.write(json.stringify({"id": file.get("id")}))
+        datafile.write(f'{{"id":"{file.get("id")}"}}')
+      
+    if len(items) == 1:
+      with open("data.json", "r+") as datafile:
+        data = json.load(datafile)
+        if data["id"] != items[0]["id"]:
+          data["id"] = items[0]["id"]
+          json.dump(data)
     
-    
-    
+    return print("Setup complete!")
+        
 
   except HttpError as error:
     # TODO(developer) - Handle errors from drive API.
@@ -62,4 +72,4 @@ def main():
 
 
 if __name__ == "__main__":
-  main()
+  setup()
