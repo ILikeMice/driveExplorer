@@ -30,5 +30,7 @@ pip install -e .
 dexp setup <dir>
 ```
 
+NOTE: On linux systems, the package might be installed into a folder which is not in the PATH variable, in which case you should add it with ```export PATH="<your path>:$PATH"```
+
 
 If you want you can also use the files from ./dist to install !
