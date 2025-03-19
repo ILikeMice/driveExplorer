@@ -1,5 +1,7 @@
 import os.path
 import json
+import click
+from click import secho
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -8,21 +10,21 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
-# If modifying these scopes, delete the file token.json.
+
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
-
-def setup():
-  """Shows basic usage of the Drive v3 API.
-  Prints the names and ids of the first 10 files the user has access to.
-  """
+@click.group()
+def cli():
+    pass
+  
+  
+  
+def signup():
   creds = None
-  # The file token.json stores the user's access and refresh tokens, and is
-  # created automatically when the authorization flow completes for the first
-  # time.
+  
   if os.path.exists("token.json"):
     creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-  # If there are no (valid) credentials available, let the user log in.
+  
   if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
       creds.refresh(Request())
@@ -31,19 +33,26 @@ def setup():
           "credentials.json", SCOPES
       )
       creds = flow.run_local_server(port=0)
-    # Save the credentials for the next run
+    
     with open("token.json", "w") as token:
       token.write(creds.to_json())
+    
+  return creds
 
+@cli.command("setup", help="Create dexp folder in destination location")
+@click.argument('folder', type=click.Path(exists=True, file_okay=False, dir_okay=True))
+def setup(folder):
+  
+  creds = signup()
   try:
     service = build("drive", "v3", credentials=creds)
     results = service.files().list(q= "mimeType = 'application/vnd.google-apps.folder' and name = 'dexp' and trashed = False", fields="files(id,name,trashed)").execute()
     items = results.get("files", [])
 
-    print(items)
+    secho(items)
 
     if len(items) > 1:
-      return print("More than one folder with the name 'dexp', please delete/rename them.")
+      return secho("More than one folder with the name 'dexp', please delete/rename them.", fg="yellow")
 
     if len(items) == 0:
       file_metadata = {
@@ -52,24 +61,44 @@ def setup():
       }
     
       file = service.files().create(body=file_metadata, fields="id").execute()
-      print(f'Folder ID: "{file.get("id")}".')
+      secho(f'Folder ID: "{file.get("id")}".')
       with open("data.json", "w") as datafile:
         datafile.write(f'{{"id":"{file.get("id")}"}}')
       
     if len(items) == 1:
-      with open("data.json", "r+") as datafile:
-        data = json.load(datafile)
-        if data["id"] != items[0]["id"]:
-          data["id"] = items[0]["id"]
-          json.dump(data)
-    
-    return print("Setup complete!")
+      with open("data.json", "w+") as datafile:
+        datafile.write(f'{{"id":"{items[0].get("id")}", "dir":"{os.path.abspath(folder).replace("\\", "/")}"}}')
         
+    with open("data.json", "r") as datafile:
+      data = json.load(datafile)
+      
+      if not os.path.exists(folder.replace("\\", "/") + "/dexp"):
+        os.mkdir(os.path.abspath(folder).replace("\\", "/") + "/dexp")
+        secho(f"dexp folder created in {data["dir"]}!", fg="green")
+      else:
+        return secho("dexp folder already exists in the destination folder!", fg="red")
+        
+    return secho("Setup complete!", fg="green")
 
   except HttpError as error:
-    # TODO(developer) - Handle errors from drive API.
-    print(f"An error occurred: {error}")
+    secho(f"An error occurred: {error}")
 
+@cli.command("save", help="Save the dexp folder to Drive")
+def save():
+  creds = signup()
+  with open("data.json", "r") as datafile:
+    data = json.load(datafile)
+    path = data["dir"]
+    folderid = data["id"]
+    
+  if not os.path.exists("data.json"):
+    return secho("Please run <dexp setup> to set up the folder first", fg="red")
+  
+  try:
+    print("saving...")
+  
+  except HttpError as error:
+    secho(f"An error occurred: {error}")
 
 if __name__ == "__main__":
-  setup()
+  cli()
