@@ -1,13 +1,15 @@
 import os.path
+import json
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/drive.file"]
 
 
 def main():
@@ -34,22 +36,26 @@ def main():
       token.write(creds.to_json())
 
   try:
-    service = build("drive", "v3", credentials=creds)
+    if not os.path.exists("data.json"):
+      service = build("drive", "v3", credentials=creds)
+      results = service.files().list(q= "mimeType = 'application/vnd.google-apps.folder' and name = 'dexp'").execute()
+      item = results.get("files", [])
+      print(item)
+      print("check")
+      file_metadata = {
+          "name": "dexp",
+          "mimeType": "application/vnd.google-apps.folder",
+      }
 
-    # Call the Drive v3 API
-    results = (
-        service.files()
-        .list(pageSize=10, fields="nextPageToken, files(id, name)")
-        .execute()
-    )
-    items = results.get("files", [])
+      # pylint: disable=maybe-no-member
+      file = service.files().create(body=file_metadata, fields="id").execute()
+      print(f'Folder ID: "{file.get("id")}".')
+      with open("data.json", "w") as datafile:
+        datafile.write(json.stringify({"id": file.get("id")}))
+    
+    
+    
 
-    if not items:
-      print("No files found.")
-      return
-    print("Files:")
-    for item in items:
-      print(f"{item['name']} ({item['id']})")
   except HttpError as error:
     # TODO(developer) - Handle errors from drive API.
     print(f"An error occurred: {error}")
